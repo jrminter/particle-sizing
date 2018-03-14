@@ -1,2 +1,2 @@
 # particle-sizing
-Criteria of particle sizing by image analysis
+Criteria for particle sizing by image analysis

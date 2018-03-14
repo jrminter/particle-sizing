@@ -1,0 +1,210 @@
+---
+title: "How many particles must I measure for a desired precision?"
+author: "John Minter"
+date: "2018-03-13"
+bibliography: ./inc/psd.bib
+csl: ./inc/acs.csl
+output:
+  pdf_document:
+    fig_caption: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction
+
+A typical image analysis measurement for a particle size distribution on
+existing systems measures from 1000 to 2500 individual particles. Many
+scientists have asked how many particles need to be measured to achieve
+a particular precision. We demonstrate in this section that, for
+broad distributions, significantly larger particle counts are required.
+
+# Masuda and Iinoya's model
+
+Masuda and Iinoya (@Masuda1971a) developed a theoretical model to answer
+this question. The model assumes the particle size distribution is
+lognormal and that there is negligible interaction between particles.
+
+Masuda and Iinoya assume that the observable quantity, $y$, is related
+to the particle diameter, $D_p$, by a power law relation:
+
+$$y = K D_{p}^{\alpha}$$
+
+where $K$ is a constant. The basis, $\beta$, of the distribution is 0
+for a count-basis and 3 for a mass basis. Masuda and Iinoya define a
+parameter, $c$, that is usually denoted by $J$ at Kodak, such that
+
+$$J = c \equiv \beta + \frac{\alpha}{2}$$
+
+Masuda and Iinoya calculate the probability, $P$, that the average
+diameter has a mean error, $\epsilon$, less than some specified relative
+error, $\delta$. These authors note that
+
+$$\Phi(-|u|) = \frac{1-P}{2}$$
+
+where
+
+$$ \Phi(u) \equiv \frac {1} {\sqrt {2\pi}} \int_{-\infty}^{u} e^{-\frac{u^{2}}{2}}du $$
+
+Masuda and Iinoya provide the following table for $u$ as a function of
+the desired probability, $P$.
+
+\begin{table}[]
+\centering
+\caption{The parameter, $u$, as a function of the desired probability, $P$. Data from Masuda and Iinoya.}
+\label{my-label}
+\begin{tabular}{lllllllllll}
+\textbf{P} & 0.50 & 0.75 & 0.80 & 0.90 & 0.95 & 0.975 & 0.990 & 0.995 & 0.998 & 0.999 \\
+\textbf{u} & 0.67 & 1.15 & 1.28 & 1.64 & 1.96 & 2.24  & 2.58  & 2.81  & 3.09  & 3.29
+\end{tabular}
+\end{table}
+
+Masuda and Iinoya compute the parameter $\sigma$ from the
+geometric standard deviation of the distribution
+
+
+$$ \sigma = \ln(GSD) $$
+
+and compute the parameter, $\omega$
+
+$$ \omega = u^{2} \alpha^{2} \sigma^{ 2} \left(2c^{2} \sigma^{ 2} + 1\right) $$
+
+that finally permits calculation that the number of particles, $n^{*}$,
+required to measure the mean particle diameter to a given precision, as
+shown below:
+
+$$ \log \left(n^{*} \right) = -2\log(\delta) + \log(\omega) $$
+
+This calculation is easily performed using an Excel97 worksheet for a
+desired precision (specified by $P$ and $\delta$) and a given moment of
+the distribution (specified by choices of $\alpha, \beta$, and,
+therefore, $c$ or $J$) and a specified geometric standard deviation.
+
+The essential result of this theoretical treatment is that $n^*$
+increases rapidly with increasing geometric standard deviation
+(i.e. width) of the distribution and the particular moment of the
+distribution that is desired (given by $c$ or $J$).
+
+We suggest that the `natural moment' of EIA is J = 0.5, although
+typically J = 0 is computed from the lognormal fit using a histogram
+with bins equally spaced in $ln(diameter)$. Note that analysis by
+Summa averages projected area (instead of equivalent circular diameter)
+and has a ``natural moment'' of J = 1. Note that significantly larger
+counts are required to measure the J = 3 moment with equivalent
+precision.
+
+Because the distribution width of Kodak emulsions is variable and the
+distribution parameters required to answer a particular client’s
+question vary, these results suggest that the number of
+particles analyzed needs to be determined on a case-by-case basis.
+The Excel97 spreadsheet developed makes such calculations easy.
+
+
+I am now (2018-03-14) in the process of converting this from Excel to R.
+The functions to convert the confidence levels to the required Z
+values were added to the **rAnaLab** package.
+
+```{r, computeUandP}
+suppressPackageStartupMessages(library(rAnaLab))
+
+conf.levs <- c(0.500, 0.750, 0.800, 0.900, 0.950, 
+               0.975, 0.990, 0.995, 0.998, 0.999)
+
+z.vals <- unlist(lapply(conf.levs, cl.to.z))
+print(z.vals)
+```
+
+
+We will now create a datafame using Masuda and Iinoya's nomenclature
+and plot the relationship between $P$ and $u$,
+
+```{r, message=FALSE}
+suppressPackageStartupMessages(library(ggplot2))
+
+df <- data.frame(P=conf.levs, u=z.vals)
+lSize <- 1
+plt <- ggplot() +
+       geom_point(data=df, aes(x=P, y=u),  colour="darkblue") + 
+       geom_line(data=df, aes(x=P, y=u), colour='darkblue',
+                 size=lSize) +
+       xlab("P") +
+       ylab("u") +
+       ggtitle("Masuda and Iinoya's u(P)") +
+       theme(axis.text=element_text(size=12),
+             axis.title=element_text(size=12),
+            plot.title=element_text(hjust = 0.5)) # center the title
+print(plt)
+
+```
+
+We will assume $u = 0.05$ (5%). We will compute for
+c (or J) = 0.5, 1, and 3. Because we are doing image analysis and
+counting individual particles, $\beta = 0$ so $\alpha = 2J$.
+
+So, we will create a vector of geometric standard deviation values
+and use this to create a dataframe.
+
+```{r, createDataFrame}
+gsd <- seq(from=1.01, to=2.49, by=0.01)
+sigma <- log(gsd)
+u <- 1.9599640
+delta <- 0.01
+J <- 0.5
+alph <- 2.0*J
+omega = u^2*alph^2*sigma^2*(2*J^2*sigma^2+1)
+lgNstar <- - 2.0*log(delta)+log(omega)
+nStarP5 <- exp(lgNstar)
+J <- 1.0
+alph <- 2.0*J
+omega = u^2*alph^2*sigma^2*(2*J^2*sigma^2+1)
+lgNstar <- - 2.0*log(delta)+log(omega)
+nStar1 <- exp(lgNstar)
+
+J <- 3.0
+alph <- 2.0*J
+omega = u^2*alph^2*sigma^2*(2*J^2*sigma^2+1)
+lgNstar <- - 2.0*log(delta)+log(omega)
+nStar3 <- exp(lgNstar)
+
+df <- data.frame(gsd=gsd, nStarP5=nStarP5,
+                 nStar1=nStar1, nStar3=nStar3)
+
+print(summary(df))
+```
+
+A plot of the number of particles required to measure selected moments
+of the distribution is shown below.
+
+```{r, plotResults, fig.cap="The number of particles required to measure the j^th^ moment of the diameter distribution, D~J~, to a precision of 0.5% at the 0.995 confidence interval for selected values of J. Values calculated using the model of Masuda and Iinoya."}
+
+suppressPackageStartupMessages(library(ggplot2))
+
+plt <- ggplot(data=df) +
+       geom_line(aes(x=gsd, y=nStarP5), colour="red") +
+       geom_line(aes(x=gsd, y=nStar1), colour="blue") +
+       geom_line(aes(x=gsd, y=nStar3), colour="darkblue") +
+       scale_x_continuous(breaks = seq(from=1.0, to=2.5, by=0.1),
+                          limits = c(1.0,2.5)) +
+       scale_y_log10(breaks = c(10, 10^2, 10^3, 10^4, 10^5,
+                                10^6, 10^7, 10^8),
+                     limits = c(1.0,1e08)) +
+       xlab(label="geometric standard deviation") +
+       ylab(label="# particles") +
+       ggtitle("") +
+       theme(axis.text=element_text(size=12),
+             axis.title=element_text(size=12),
+             # center the title
+             plot.title = element_text(hjust = 0.5))
+
+print(plt)
+
+```
+
+These values agree quite well with those computed using Roger Button's
+spreadsheet in 1999. That workbook is no longer available but the plot
+is included in the technical report we wrote at the time. One advantage
+of performing the computation in R is that functions that may be reused
+are easily included in packages under version control and the Rmarkdown
+documents make it easy to "show our work."
