@@ -1,0 +1,118 @@
+---
+title: "Models for mass thickness contrast in transmission electron imaging"
+author: "John Minter"
+date: "2018-03-13"
+bibliography: ./inc/psd.bib
+csl: ./inc/acs.csl
+output:
+  pdf_document:
+    fig_caption: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction
+
+The theory of mass thickness contrast in transmission electron imaging
+was developed by Smith and Burge [@Smith1963a] refined by Misell and
+Burdett [Misell1977a]. The most important aspect of this theory is that
+the plural scattering cross section for electrons, $S_{P}$, is
+reasonably insensitive to atomic number but is dependent upon the
+accelerating voltage, $V_{0}$, and the aperture half angle, $\alpha$.
+The ratio of the image intensity through the specimen, $I$, to the
+incident electron intensity, $I_{0}$, is given by:
+
+$$ \frac{I}{I_{0}} = e^{-S_{P}\left(V_{0},\alpha \right) \cdot p \cdot t } $$
+where $\rho$ is the density and $t$ is the thickness. If $rho$ has units
+of $g/cm^3$ and $t$ has units of $cm$, then $S_{P}$ has units of
+$cm^{2}/g$. Misell and Burdett provided tabulated values for selected
+values of $S_{P}(V0,\alpha)$. These values do not cover all the voltages
+and aperture half angles of interest. We noticed that a plot of
+ln(SP) vs. ln(V0) is linear, as shown below.
+
+```{r, loadDF}
+suppressPackageStartupMessages(library(here))
+suppressPackageStartupMessages(library(pander))
+suppressPackageStartupMessages(library(tidyverse))
+fi <- here('dat/Misell-Burdett.csv')
+df <- read_csv(fi)
+pander(df)
+```
+
+```{r, makeLogDF}
+fac1 <- 1000 # kev to eV
+fac2 <- 10000000 # m2/mg to cm2/g 
+df.ln <- data.frame(ln.E0.eV=log(1000*df[,1]),
+                    ln.alpha.05=log(fac2*df[,2]),
+                    ln.alpha.10=log(fac2*df[,3]),
+                    ln.alpha.15=log(fac2*df[,4]))
+names(df.ln) <- c("ln.e0.eV","ln.alpha.05",
+                  "ln.alpha.10","ln.alpha.15")
+pander(summary(df.ln))
+```
+
+Next, let's fit the data to a linear regression for each aperture.
+
+```{r, fitAp05}
+x.pred <- seq(from=9.90, to=11.6, by=0.01)
+
+df.05 <- data.frame(x=df.ln[,1], y=df.ln[,2])
+lm.05 <- lm(y~x, data=df.05)
+sum.05 <- summary(lm.05)
+coe.05 <- sum.05$coef
+pander(coe.05)
+
+df.05.p <- data.frame(x=x.pred)
+df.05.p$y <- predict(lm.05, newdat=df.05.p)
+```
+
+```{r, fitAp10}
+
+df.10 <- data.frame(x=df.ln[,1], y=df.ln[,3])
+lm.10 <- lm(y~x, data=df.10)
+sum.10 <- summary(lm.10)
+coe.10<- sum.10$coef
+pander(coe.10)
+
+df.10.p <- data.frame(x=x.pred)
+df.10.p$y <- predict(lm.10, newdat=df.10.p)
+```
+
+```{r, fitAp15}
+
+df.15 <- data.frame(x=df.ln[,1], y=df.ln[,4])
+lm.15 <- lm(y~x, data=df.15)
+sum.15 <- summary(lm.15)
+coe.15<- sum.15$coef
+pander(coe.15)
+
+df.15.p <- data.frame(x=x.pred)
+df.15.p$y <- predict(lm.15, newdat=df.15.p)
+```
+
+
+
+```{r, makeLogPlot}
+
+plt <- ggplot() +
+       geom_point(data=df.ln, aes(x=ln.e0.eV, y=ln.alpha.05),
+                  colour="darkblue") +
+       geom_line(data=df.05.p, aes(x=x, y=y), colour="darkblue")  +
+       geom_point(data=df.ln, aes(x=ln.e0.eV, y=ln.alpha.10),
+                  colour="blue") +
+       geom_line(data=df.10.p, aes(x=x, y=y), colour="blue")  +
+       geom_point(data=df.ln, aes(x=ln.e0.eV, y=ln.alpha.15),
+                  colour="red") +
+       geom_line(data=df.15.p, aes(x=x, y=y), colour="red")  +
+       xlab(label="ln(e0 [eV])") +
+       ylab(label="ln(Sp [cm2/g])") +
+       ggtitle("Misell-Burdett data") +
+       theme(axis.text=element_text(size=12),
+             axis.title=element_text(size=12),
+             # center the title
+             plot.title = element_text(hjust = 0.5))
+
+print(plt)
+```
