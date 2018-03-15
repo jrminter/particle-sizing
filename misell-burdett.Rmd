@@ -6,6 +6,8 @@ bibliography: ./inc/psd.bib
 csl: ./inc/acs.csl
 output:
   pdf_document:
+    toc: true
+    toc_depth: 2
     fig_caption: yes
 ---
 
@@ -28,11 +30,16 @@ $$ \frac{I}{I_{0}} = e^{-S_{P}\left(V_{0},\alpha \right) \cdot p \cdot t } $$
 where $\rho$ is the density and $t$ is the thickness. If $rho$ has units
 of $g/cm^3$ and $t$ has units of $cm$, then $S_{P}$ has units of
 $cm^{2}/g$. Misell and Burdett provided tabulated values for selected
-values of $S_{P}(V0,\alpha)$. These values do not cover all the voltages
-and aperture half angles of interest. We noticed that a plot of
-ln(SP) vs. ln(V0) is linear, as shown below.
+values of $S_{P}(V0,\alpha)$. Note that Misell and Burdett reported the
+data in units of $m^2/mg$, so we will need to transform the data.
 
-```{r, loadDF}
+These values do not cover all the voltages and aperture half angles of
+interest. We noticed that a plot of ln(SP) vs. ln(V0) is linear, as
+shown below.
+
+First, we load the raw data, taken from p. 175 of the paper.
+
+```{r, loadDF, message=FALSE}
 suppressPackageStartupMessages(library(here))
 suppressPackageStartupMessages(library(pander))
 suppressPackageStartupMessages(library(tidyverse))
@@ -41,19 +48,36 @@ df <- read_csv(fi)
 pander(df)
 ```
 
+\clearpage
+
+Next, transform the data by:
+
+1. Convert $kV$ to $eV$ (fac1)
+2. Convert $m^2/mg$ to $cm^2/g$ (fac2)
+3. Take the natural log of each term. *N.B.* In R the natural log
+function is `log()` while the base 10 function is `log10()`.
+
+
 ```{r, makeLogDF}
 fac1 <- 1000 # kev to eV
 fac2 <- 10000000 # m2/mg to cm2/g 
-df.ln <- data.frame(ln.E0.eV=log(1000*df[,1]),
+df.ln <- data.frame(ln.E0.eV=log(fac1*df[,1]),
                     ln.alpha.05=log(fac2*df[,2]),
                     ln.alpha.10=log(fac2*df[,3]),
                     ln.alpha.15=log(fac2*df[,4]))
 names(df.ln) <- c("ln.e0.eV","ln.alpha.05",
                   "ln.alpha.10","ln.alpha.15")
+pander(df.ln)
+```
+
+Next, let'd consider the summary statistics of the data.
+
+```{r, summarizeLnDf}
 pander(summary(df.ln))
 ```
 
-Next, let's fit the data to a linear regression for each aperture.
+Next, let's fit the data to a linear regression for each aperture,
+starting with the 5 mrad aperture.
 
 ```{r, fitAp05}
 x.pred <- seq(from=9.90, to=11.6, by=0.01)
@@ -63,36 +87,82 @@ lm.05 <- lm(y~x, data=df.05)
 sum.05 <- summary(lm.05)
 coe.05 <- sum.05$coef
 pander(coe.05)
+```
 
+\clearpage 
+
+We now define a function to get the slope and intercept from the
+coefficients so we can tabulate them.
+
+```{r, getCoef05}
+getInterceptFromCoef <- function(coe){
+  mu <- coe[1]
+  se <- coe[3]
+  ret <- c(mu,se)
+  names(ret) <- c("mu", "se")
+  return(ret)
+}
+
+getSlopeFromCoef <- function(coe){
+  mu <- coe[2]
+  se <- coe[4]
+  ret <- c(mu,se)
+  names(ret) <- c("mu", "se")
+  return(ret)
+}
+
+sl.05 <- getInterceptFromCoef(coe.05)
+in.05 <- getSlopeFromCoef(coe.05)
+```
+And compute the predicted values for the line
+
+```{r, predAp05}
 df.05.p <- data.frame(x=x.pred)
 df.05.p$y <- predict(lm.05, newdat=df.05.p)
 ```
 
-```{r, fitAp10}
+We repeat the process for the 10 mrad aperture.
 
+```{r, fitAp10}
 df.10 <- data.frame(x=df.ln[,1], y=df.ln[,3])
 lm.10 <- lm(y~x, data=df.10)
 sum.10 <- summary(lm.10)
 coe.10<- sum.10$coef
+sl.10 <- getInterceptFromCoef(coe.10)
+in.10 <- getSlopeFromCoef(coe.10)
 pander(coe.10)
+```
 
+Again, computing the predicted values.
+
+```{r, predAp10}
 df.10.p <- data.frame(x=x.pred)
 df.10.p$y <- predict(lm.10, newdat=df.10.p)
 ```
 
-```{r, fitAp15}
+Finally, we fit the data for the 15 mrad aperture.
 
+```{r, fitAp15}
 df.15 <- data.frame(x=df.ln[,1], y=df.ln[,4])
 lm.15 <- lm(y~x, data=df.15)
 sum.15 <- summary(lm.15)
 coe.15<- sum.15$coef
+coe.10<- sum.10$coef
+sl.15 <- getInterceptFromCoef(coe.15)
+in.15 <- getSlopeFromCoef(coe.15)
 pander(coe.15)
+```
 
+computing the predicted values as before.
+
+```{r, predAp15}
 df.15.p <- data.frame(x=x.pred)
 df.15.p$y <- predict(lm.15, newdat=df.15.p)
 ```
 
+\clearpage
 
+Next, we plot the data.
 
 ```{r, makeLogPlot}
 
@@ -116,3 +186,23 @@ plt <- ggplot() +
 
 print(plt)
 ```
+
+\clearpage
+
+Now we can aggregate the data
+
+```{r, aggregateCoef}
+slope <- round(rbind(sl.05, sl.10, sl.15), 4)
+inter <- round(rbind(in.05, in.10, in.15), 4)
+mrad <- c(5,10,15)
+mat.fit <- cbind(mrad, slope, inter)
+
+df.fit <- as.data.frame(matrix(unlist(mat.fit), nrow = 3))
+names(df.fit) <- c("mrad", "slope.mu", "slope.se",
+                   "inter.mu", "inter.se")
+pander(df.fit)
+```
+
+\clearpage
+
+# References
